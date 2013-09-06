@@ -472,8 +472,7 @@ func (c *Canvas) FindMode(name string) *DisplayMode {
 
 // Modes returns the list of supported display modes.
 // These are read from `/etc/fb.modes`.
-//
-// This can be called before Canvas.Open has been run.
+// This can be called before the framebuffer has been opened.
 func (c *Canvas) Modes() ([]*DisplayMode, error) {
 	var (
 		list         []*DisplayMode

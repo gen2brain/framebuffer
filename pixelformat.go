@@ -14,7 +14,7 @@ const (
 	PF_RGB_565 // 16-bit color
 	PF_BGR_555 // 16-bit color
 	PF_BGR_565 // 16-bit color
-	PF_INDEXED // 8-bit color.
+	PF_INDEXED // 8-bit color (grayscale or paletted).
 )
 
 // PixelFormat describes the color layout of a single pixel
