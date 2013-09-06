@@ -22,7 +22,7 @@ be supplied along with any desired resolution. Doing this incorrectly
 can damage the display.
 
 `fbset` comes with a set of default modes which are stored in the file
-`/etc/fb.modes`. `termpix` reads this file and extracts the set of
+`/etc/fb.modes`. We read this file and extract the set of
 video modes from it. These modes each have a name by which they can
 be identified. When supplying a new mode to this package, it should
 come in the form of this name. For example: `"1600x1200-76"`.
