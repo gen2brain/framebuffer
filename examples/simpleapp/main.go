@@ -9,8 +9,6 @@ import (
 	"github.com/jteeuwen/framebuffer"
 	"image"
 	"image/draw"
-	_ "image/jpeg"
-	_ "image/png"
 	_ "image/png"
 	"os"
 	"os/signal"
