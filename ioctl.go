@@ -5,20 +5,11 @@ package framebuffer
 
 import (
 	"fmt"
-	"os"
-	"runtime"
 	"syscall"
 	"unsafe"
 )
 
-func ioctl(fd, name uintptr, data interface{}) bool {
-	str := "ioctl: "
-
-	_, file, line, ok := runtime.Caller(1)
-	if ok {
-		str += fmt.Sprintf("%s:%d", file, line)
-	}
-
+func ioctl(fd, name uintptr, data interface{}) error {
 	var v uintptr
 
 	switch dd := data.(type) {
@@ -32,17 +23,15 @@ func ioctl(fd, name uintptr, data interface{}) bool {
 		v = dd
 
 	default:
-		fmt.Fprintf(os.Stderr, "%s Invalid argument.\n", str)
-		return false
+		return fmt.Errorf("ioctl: Invalid argument.")
 	}
 
 	_, _, errno := syscall.RawSyscall(syscall.SYS_IOCTL, fd, name, v)
 	if errno == 0 {
-		return true
+		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "%s %v\n", str, errno)
-	return false
+	return errno
 }
 
 const (

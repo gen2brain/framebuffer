@@ -19,8 +19,6 @@ import (
 	"unsafe"
 )
 
-var err_IOCTL = errors.New("ioctl error")
-
 // Format strings for device locations.
 // Values depend on whether we are dealing with DevFS or not.
 var (
@@ -102,26 +100,28 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 
 	// Get VT state
 	var vts vt_stat
-	if !ioctl(c.tty.Fd(), _VT_GETSTATE, unsafe.Pointer(&vts)) {
-		return err_IOCTL
+	err = ioctl(c.tty.Fd(), _VT_GETSTATE, unsafe.Pointer(&vts))
+	if err != nil {
+		return
 	}
 
 	// Determine which framebuffer to use.
 	c.dev = os.Getenv("FRAMEBUFFER")
 	if len(c.dev) == 0 {
 		var c2m fb_con2fbmap
+		var fd *os.File
 
-		fd, err := os.OpenFile(fb0, os.O_WRONLY, 0)
+		fd, err = os.OpenFile(fb0, os.O_WRONLY, 0)
 		if err != nil {
 			return fmt.Errorf("open %q: %v", fb0, err)
 		}
 
 		c2m.console = uint32(vts.v_active)
-		ok := ioctl(fd.Fd(), _IOGET_CON2FBMAP, unsafe.Pointer(&c2m))
+		err = ioctl(fd.Fd(), _IOGET_CON2FBMAP, unsafe.Pointer(&c2m))
 		fd.Close()
 
-		if !ok {
-			return err_IOCTL
+		if err != nil {
+			return
 		}
 
 		c.dev = fmt.Sprintf(fbnr, c2m.framebuffer)
@@ -136,13 +136,15 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 	// Fetch original fixed buffer information.
 	// This will never be changed, but we need the information
 	// in various places.
-	if !ioctl(c.fd.Fd(), _IOGET_FSCREENINFO, unsafe.Pointer(&c.orig_fi)) {
-		return err_IOCTL
+	err = ioctl(c.fd.Fd(), _IOGET_FSCREENINFO, unsafe.Pointer(&c.orig_fi))
+	if err != nil {
+		return
 	}
 
 	// Fetch original variable information.
-	if !ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&c.orig_vi)) {
-		return err_IOCTL
+	err = ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&c.orig_vi))
+	if err != nil {
+		return
 	}
 
 	// Fetch original color palette if applicable.
@@ -155,29 +157,34 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 		cm.blue = unsafe.Pointer(&c.orig_b[0])
 		cm.transp = unsafe.Pointer(&c.orig_a[0])
 
-		if !ioctl(c.fd.Fd(), _IOGET_CMAP, unsafe.Pointer(&cm)) {
-			return err_IOCTL
+		err = ioctl(c.fd.Fd(), _IOGET_CMAP, unsafe.Pointer(&cm))
+		if err != nil {
+			return
 		}
 	}
 
 	// Get KD mode
-	if !ioctl(c.tty.Fd(), _KDGETMODE, unsafe.Pointer(&c.orig_kd)) {
-		return err_IOCTL
+	err = ioctl(c.tty.Fd(), _KDGETMODE, unsafe.Pointer(&c.orig_kd))
+	if err != nil {
+		return
 	}
 
 	// Get original vt mode
-	if !ioctl(c.tty.Fd(), _VT_GETMODE, unsafe.Pointer(&c.orig_vt)) {
-		return err_IOCTL
+	err = ioctl(c.tty.Fd(), _VT_GETMODE, unsafe.Pointer(&c.orig_vt))
+	if err != nil {
+		return
 	}
 
 	// Set display mode.
-	if !c.setMode(dm) {
-		return err_IOCTL
+	err = c.setMode(dm)
+	if err != nil {
+		return
 	}
 
 	// Fetch original fixed buffer information (again).
-	if !ioctl(c.fd.Fd(), _IOGET_FSCREENINFO, unsafe.Pointer(&c.orig_fi)) {
-		return err_IOCTL
+	err = ioctl(c.fd.Fd(), _IOGET_FSCREENINFO, unsafe.Pointer(&c.orig_fi))
+	if err != nil {
+		return
 	}
 
 	// Ensure we are in PACKED_PIXELS mode. Others are useless to us.
@@ -207,24 +214,27 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 		vi.xoffset = 0
 		vi.yoffset = 0
 
-		if !ioctl(c.fd.Fd(), _IOPAN_DISPLAY, unsafe.Pointer(vi)) {
-			return err_IOCTL
+		err = ioctl(c.fd.Fd(), _IOPAN_DISPLAY, unsafe.Pointer(vi))
+		if err != nil {
+			return
 		}
 	}
 
 	// Switch terminal to graphics mode.
-	if !ioctl(c.tty.Fd(), _KDSETMODE, _KD_GRAPHICS) {
-		return err_IOCTL
+	err = ioctl(c.tty.Fd(), _KDSETMODE, _KD_GRAPHICS)
+	if err != nil {
+		return
 	}
 
 	// Activate the given tty.
-	if !c.activateCurrent(c.tty) {
-		return err_IOCTL
+	err = c.activateCurrent(c.tty)
+	if err != nil {
+		return
 	}
 
 	// Clear screen
 	c.Clear()
-	return nil
+	return
 }
 
 // Close closes the framebuffer and cleans up its resources.
@@ -236,7 +246,8 @@ func (c *Canvas) Close() (err error) {
 
 	if c.fd != nil {
 		// Restore original framebuffer settings.
-		if !ioctl(c.fd.Fd(), _IOPUT_VSCREENINFO, unsafe.Pointer(&c.orig_vi)) {
+		err = ioctl(c.fd.Fd(), _IOPUT_VSCREENINFO, unsafe.Pointer(&c.orig_vi))
+		if err != nil {
 			goto skip_fd
 		}
 
@@ -250,7 +261,7 @@ func (c *Canvas) Close() (err error) {
 			cm.blue = unsafe.Pointer(&c.orig_b[0])
 			cm.transp = unsafe.Pointer(&c.orig_a[0])
 
-			ioctl(c.fd.Fd(), _IOPUT_CMAP, unsafe.Pointer(&cm))
+			err = ioctl(c.fd.Fd(), _IOPUT_CMAP, unsafe.Pointer(&cm))
 		}
 
 	skip_fd:
@@ -259,22 +270,23 @@ func (c *Canvas) Close() (err error) {
 	}
 
 	if c.tty != nil {
-		if !ioctl(c.tty.Fd(), _KDSETMODE, c.orig_kd) {
+		err = ioctl(c.tty.Fd(), _KDSETMODE, c.orig_kd)
+		if err != nil {
 			goto skip_tty
 		}
 
-		if !ioctl(c.tty.Fd(), _VT_SETMODE, unsafe.Pointer(&c.orig_vt)) {
+		err = ioctl(c.tty.Fd(), _VT_SETMODE, unsafe.Pointer(&c.orig_vt))
+		if err != nil {
 			goto skip_tty
 		}
 
 		if c.orig_vt_no > 0 {
-			if !ioctl(c.tty.Fd(), _VT_ACTIVATE, c.orig_vt_no) {
+			err = ioctl(c.tty.Fd(), _VT_ACTIVATE, c.orig_vt_no)
+			if err != nil {
 				goto skip_tty
 			}
 
-			if !ioctl(c.tty.Fd(), _VT_WAITACTIVE, c.orig_vt_no) {
-				goto skip_tty
-			}
+			err = ioctl(c.tty.Fd(), _VT_WAITACTIVE, c.orig_vt_no)
 		}
 
 	skip_tty:
@@ -344,15 +356,16 @@ func (c *Canvas) Buffer() []byte {
 // setMode sets the given display mode.
 // If the mode is nil, this returns without error;
 // the call is simply ignored.
-func (c *Canvas) setMode(dm *DisplayMode) bool {
+func (c *Canvas) setMode(dm *DisplayMode) error {
 	if dm == nil {
-		return true
+		return nil
 	}
 
 	var v fb_var_screeninfo
 
-	if !ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&v)) {
-		return false
+	err := ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&v))
+	if err != nil {
+		return err
 	}
 
 	v.xres = uint32(dm.XRes)
@@ -398,7 +411,7 @@ func (c *Canvas) CurrentMode() (*DisplayMode, error) {
 	var v fb_var_screeninfo
 	var dm DisplayMode
 
-	if !ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&v)) {
+	if ioctl(c.fd.Fd(), _IOGET_VSCREENINFO, unsafe.Pointer(&v)) != nil {
 		return nil, errors.New("Canvas.CurrentMode failed.")
 	}
 
@@ -647,7 +660,7 @@ func (c *Canvas) Palette() (color.Palette, error) {
 	cm.blue = unsafe.Pointer(&c.tmp_b[0])
 	cm.transp = unsafe.Pointer(&c.tmp_a[0])
 
-	if !ioctl(c.fd.Fd(), _IOGET_CMAP, unsafe.Pointer(&cm)) {
+	if ioctl(c.fd.Fd(), _IOGET_CMAP, unsafe.Pointer(&cm)) != nil {
 		return nil, errors.New("Canvas.Palette failed")
 	}
 
@@ -688,7 +701,7 @@ func (c *Canvas) SetPalette(pal color.Palette) error {
 	cm.blue = unsafe.Pointer(&c.tmp_b[0])
 	cm.transp = unsafe.Pointer(&c.tmp_a[0])
 
-	if !ioctl(c.fd.Fd(), _IOPUT_CMAP, unsafe.Pointer(&cm)) {
+	if ioctl(c.fd.Fd(), _IOPUT_CMAP, unsafe.Pointer(&cm)) != nil {
 		return errors.New("Canvas.SetPalette failed")
 	}
 
@@ -705,7 +718,7 @@ func (c *Canvas) switchRelease() {
 	c.switch_state = _FB_INACTIVE
 }
 
-func (c *Canvas) switchInit() bool {
+func (c *Canvas) switchInit() error {
 	var vm vt_mode
 
 	vm.mode = _VT_PROCESS
@@ -732,15 +745,17 @@ func (c *Canvas) pollSignals() {
 	}
 }
 
-func (c *Canvas) activateCurrent(tty *os.File) bool {
+func (c *Canvas) activateCurrent(tty *os.File) error {
 	var vts vt_stat
 
-	if !ioctl(tty.Fd(), _VT_GETSTATE, unsafe.Pointer(&vts)) {
-		return false
+	err := ioctl(tty.Fd(), _VT_GETSTATE, unsafe.Pointer(&vts))
+	if err != nil {
+		return err
 	}
 
-	if !ioctl(tty.Fd(), _VT_ACTIVATE, int(vts.v_active)) {
-		return false
+	err = ioctl(tty.Fd(), _VT_ACTIVATE, int(vts.v_active))
+	if err != nil {
+		return err
 	}
 
 	return ioctl(tty.Fd(), _VT_WAITACTIVE, int(vts.v_active))
