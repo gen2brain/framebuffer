@@ -65,16 +65,6 @@ type Canvas struct {
 	tmp_a [256]uint16
 }
 
-// New creates a new, uninitialized canvas.
-func New() *Canvas {
-	c := new(Canvas)
-	c.tty = os.Stdout
-	c.orig_vt_no = 0
-	c.switch_state = _FB_ACTIVE
-	go c.pollSignals()
-	return c
-}
-
 // Open opens the framebuffer with the given display mode.
 //
 // If mode is nil, the default framebuffer mode is used.
@@ -90,7 +80,12 @@ func New() *Canvas {
 // can damage the display. Refer to Canvas.Modes() and Canvas.FindMode()
 // for more information. Canvas.CurrentMode() can be used to see which
 // mode is actually being used.
-func (c *Canvas) Open(dm *DisplayMode) (err error) {
+func Open(dm *DisplayMode) (c *Canvas, err error) {
+	c = new(Canvas)
+	c.tty = os.Stdout
+	c.orig_vt_no = 0
+	c.switch_state = _FB_ACTIVE
+
 	defer func() {
 		// Ensure resources are properly cleaned up when things go booboo.
 		if err != nil {
@@ -113,7 +108,8 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 
 		fd, err = os.OpenFile(fb0, os.O_WRONLY, 0)
 		if err != nil {
-			return fmt.Errorf("open %q: %v", fb0, err)
+			err = fmt.Errorf("open %q: %v", fb0, err)
+			return
 		}
 
 		c2m.console = uint32(vts.v_active)
@@ -189,19 +185,22 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 
 	// Ensure we are in PACKED_PIXELS mode. Others are useless to us.
 	if c.orig_fi.typ != _TYPE_PACKED_PIXELS {
-		return errors.New("Canvas.Open: Framebuffer is not in PACKED PIXELS mode. Unable to continue.")
+		err = errors.New("Canvas.Open: Framebuffer is not in PACKED PIXELS mode. Unable to continue.")
+		return
 	}
 
 	// If we have a non-standard pixel format, we can't continue.
 	if c.orig_vi.nonstd != 0 {
-		return errors.New("Canvas.Open: Framebuffer uses a non-standard pixel format. This is not supported.")
+		err = errors.New("Canvas.Open: Framebuffer uses a non-standard pixel format. This is not supported.")
+		return
 	}
 
 	// mmap the buffer's memory.
 	c.mem, err = syscall.Mmap(int(c.fd.Fd()), 0, int(c.orig_fi.smemlen),
 		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
-		return errors.New("Canvas.Open: Mmap failed")
+		err = errors.New("Canvas.Open: Mmap failed")
+		return
 	}
 
 	// Create pre-allocated zero-memory.
@@ -234,6 +233,7 @@ func (c *Canvas) Open(dm *DisplayMode) (err error) {
 
 	// Clear screen
 	c.Clear()
+	go c.pollSignals()
 	return
 }
 
