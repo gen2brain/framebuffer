@@ -1,5 +1,5 @@
 ## Examples
 
 This directory contains various example programs,
-demonstrating various uses of the `termpix` library.
+demonstrating various uses of the framebuffer library.
 
