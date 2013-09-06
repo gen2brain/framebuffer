@@ -9,4 +9,5 @@ It loads an image and displays it on screen.
 	$ go build
 	$ ./simpleapp
 
+Press ^C to stop the application.
 
