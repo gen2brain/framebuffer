@@ -32,7 +32,7 @@ func ioctl(fd, name uintptr, data interface{}) bool {
 		v = dd
 
 	default:
-		fmt.Fprintf(os.Stderr, "%s Invalid argument.", str)
+		fmt.Fprintf(os.Stderr, "%s Invalid argument.\n", str)
 		return false
 	}
 
@@ -41,7 +41,7 @@ func ioctl(fd, name uintptr, data interface{}) bool {
 		return true
 	}
 
-	fmt.Fprintf(os.Stderr, "%s %v", str, errno)
+	fmt.Fprintf(os.Stderr, "%s %v\n", str, errno)
 	return false
 }
 
