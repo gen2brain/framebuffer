@@ -294,6 +294,14 @@ func (c *Canvas) Close() (err error) {
 	return
 }
 
+// File returns the underlying framebuffer file descriptor.
+// This can be used in custom IOCTL calls.
+//
+// Use with caution and do not close it manually.
+func (c *Canvas) File() *os.File {
+	return c.fd
+}
+
 // Image returns the pixel buffer as a draw.Image instance.
 // Returns nil if something went wrong.
 func (c *Canvas) Image() (draw.Image, error) {
