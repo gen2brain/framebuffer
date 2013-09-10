@@ -4,7 +4,6 @@
 package framebuffer
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"image"
@@ -12,8 +11,6 @@ import (
 	"image/draw"
 	"os"
 	"os/signal"
-	"regexp"
-	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -307,7 +304,7 @@ func (c *Canvas) Image() (draw.Image, error) {
 
 	p := c.mem
 	s := mode.Stride()
-	r := image.Rect(0, 0, mode.XVRes, mode.YVRes)
+	r := image.Rect(0, 0, mode.Geometry.XVRes, mode.Geometry.YVRes)
 
 	// Find out which image type we should be returning.
 	// This depends on the current pixel format.
@@ -368,18 +365,18 @@ func (c *Canvas) setMode(dm *DisplayMode) error {
 		return err
 	}
 
-	v.xres = uint32(dm.XRes)
-	v.yres = uint32(dm.YRes)
-	v.xres_virtual = uint32(dm.XVRes)
-	v.yres_virtual = uint32(dm.YVRes)
-	v.bits_per_pixel = uint32(dm.Bpp)
-	v.pixclock = uint32(dm.Pixclock)
-	v.left_margin = uint32(dm.Left)
-	v.right_margin = uint32(dm.Right)
-	v.upper_margin = uint32(dm.Upper)
-	v.lower_margin = uint32(dm.Lower)
-	v.hsync_len = uint32(dm.HSync)
-	v.vsync_len = uint32(dm.VSync)
+	v.xres = uint32(dm.Geometry.XRes)
+	v.yres = uint32(dm.Geometry.YRes)
+	v.xres_virtual = uint32(dm.Geometry.XVRes)
+	v.yres_virtual = uint32(dm.Geometry.YVRes)
+	v.bits_per_pixel = uint32(dm.Geometry.Depth)
+	v.pixclock = uint32(dm.Timings.Pixclock)
+	v.left_margin = uint32(dm.Timings.Left)
+	v.right_margin = uint32(dm.Timings.Right)
+	v.upper_margin = uint32(dm.Timings.Upper)
+	v.lower_margin = uint32(dm.Timings.Lower)
+	v.hsync_len = uint32(dm.Timings.HSLen)
+	v.vsync_len = uint32(dm.Timings.VSLen)
 	v.sync = uint32(dm.Sync)
 	v.vmode = uint32(dm.VMode)
 
@@ -415,18 +412,20 @@ func (c *Canvas) CurrentMode() (*DisplayMode, error) {
 		return nil, errors.New("Canvas.CurrentMode failed.")
 	}
 
-	dm.XRes = int(v.xres)
-	dm.YRes = int(v.yres)
-	dm.XVRes = int(v.xres_virtual)
-	dm.YVRes = int(v.yres_virtual)
-	dm.Bpp = int(v.bits_per_pixel)
-	dm.Pixclock = int(v.pixclock)
-	dm.Left = int(v.left_margin)
-	dm.Right = int(v.right_margin)
-	dm.Upper = int(v.upper_margin)
-	dm.Lower = int(v.lower_margin)
-	dm.HSync = int(v.hsync_len)
-	dm.VSync = int(v.vsync_len)
+	dm.Accelerated = c.orig_fi.accel != _ACCEL_NONE
+
+	dm.Geometry.XRes = int(v.xres)
+	dm.Geometry.YRes = int(v.yres)
+	dm.Geometry.XVRes = int(v.xres_virtual)
+	dm.Geometry.YVRes = int(v.yres_virtual)
+	dm.Geometry.Depth = int(v.bits_per_pixel)
+	dm.Timings.Pixclock = int(v.pixclock)
+	dm.Timings.Left = int(v.left_margin)
+	dm.Timings.Right = int(v.right_margin)
+	dm.Timings.Upper = int(v.upper_margin)
+	dm.Timings.Lower = int(v.lower_margin)
+	dm.Timings.HSLen = int(v.hsync_len)
+	dm.Timings.VSLen = int(v.vsync_len)
 	dm.Sync = int(v.sync)
 	dm.VMode = int(v.vmode)
 
@@ -474,21 +473,6 @@ func (c *Canvas) FindMode(name string) *DisplayMode {
 // These are read from `/etc/fb.modes`.
 // This can be called before the framebuffer has been opened.
 func (c *Canvas) Modes() ([]*DisplayMode, error) {
-	var (
-		list         []*DisplayMode
-		reg_endmode  = regexp.MustCompile(`endmode`)
-		reg_label    = regexp.MustCompile(`^mode "([^"]+)"`)
-		reg_geometry = regexp.MustCompile(`geometry (\d+) (\d+) (\d+) (\d+) (\d+)`)
-		reg_timings  = regexp.MustCompile(`timings (\d+) (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)`)
-		reg_hsync    = regexp.MustCompile(`hsync high`)
-		reg_vsync    = regexp.MustCompile(`vsync high`)
-		reg_csync    = regexp.MustCompile(`csync high`)
-		reg_extsync  = regexp.MustCompile(`extsync true`)
-		reg_laced    = regexp.MustCompile(`laced true`)
-		reg_double   = regexp.MustCompile(`double true`)
-		reg_pf       = regexp.MustCompile(`rgba (\d+)/(\d+),(\d+)/(\d+),(\d+)/(\d+),(\d+)/(\d+)`)
-	)
-
 	fd, err := os.Open("/etc/fb.modes")
 	if err != nil {
 		return nil, err
@@ -496,207 +480,7 @@ func (c *Canvas) Modes() ([]*DisplayMode, error) {
 
 	defer fd.Close()
 
-	r := bufio.NewReader(fd)
-	dm := new(DisplayMode)
-
-	for {
-		line, err := r.ReadBytes('\n')
-		if err != nil {
-			break
-		}
-
-		// End of mode?
-		if reg_endmode.Match(line) {
-			list = append(list, dm)
-			dm = new(DisplayMode)
-			continue
-		}
-
-		// Parse label.
-		matches := reg_label.FindSubmatch(line)
-		if len(matches) == 2 {
-			dm.Name = string(matches[1])
-			continue
-		}
-
-		// Parse hsync
-		if reg_hsync.Match(line) {
-			dm.Sync |= SyncHorHighAct
-			continue
-		}
-
-		// Parse vsync
-		if reg_vsync.Match(line) {
-			dm.Sync |= SyncVertHighAct
-			continue
-		}
-
-		// Parse csync
-		if reg_csync.Match(line) {
-			dm.Sync |= SyncCompHighAct
-			continue
-		}
-
-		// Parse extsync
-		if reg_extsync.Match(line) {
-			dm.Sync |= SyncExt
-			continue
-		}
-
-		// Parse laced
-		if reg_laced.Match(line) {
-			dm.VMode |= VModeInterlaced
-			continue
-		}
-
-		// Parse double
-		if reg_double.Match(line) {
-			dm.VMode |= VModeDouble
-			continue
-		}
-
-		// Parse pixel format.
-		matches = reg_pf.FindSubmatch(line)
-		if len(matches) == 9 {
-			rb, err := strconv.ParseInt(string(matches[1]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			rs, err := strconv.ParseInt(string(matches[2]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			gb, err := strconv.ParseInt(string(matches[3]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			gs, err := strconv.ParseInt(string(matches[4]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			bb, err := strconv.ParseInt(string(matches[5]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			bs, err := strconv.ParseInt(string(matches[6]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			ab, err := strconv.ParseInt(string(matches[7]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			as, err := strconv.ParseInt(string(matches[8]), 10, 8)
-			if err != nil {
-				return nil, err
-			}
-
-			var pf PixelFormat
-			pf.RedBits = uint8(rb)
-			pf.RedShift = uint8(rs)
-			pf.GreenBits = uint8(gb)
-			pf.GreenShift = uint8(gs)
-			pf.BlueBits = uint8(bb)
-			pf.BlueShift = uint8(bs)
-			pf.AlphaBits = uint8(ab)
-			pf.AlphaShift = uint8(as)
-			dm.Format = pf
-			continue
-		}
-
-		// Parse geometry
-		matches = reg_geometry.FindSubmatch(line)
-		if len(matches) == 6 {
-			a, err := strconv.ParseInt(string(matches[1]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			b, err := strconv.ParseInt(string(matches[2]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			c, err := strconv.ParseInt(string(matches[3]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			d, err := strconv.ParseInt(string(matches[4]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			e, err := strconv.ParseInt(string(matches[5]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			dm.XRes = int(a)
-			dm.YRes = int(b)
-			dm.XVRes = int(c)
-			dm.YVRes = int(d)
-			dm.Bpp = int(e)
-			continue
-		}
-
-		// Parse timings
-		matches = reg_timings.FindSubmatch(line)
-		if len(matches) == 8 {
-			a, err := strconv.ParseInt(string(matches[1]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			b, err := strconv.ParseInt(string(matches[2]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			c, err := strconv.ParseInt(string(matches[3]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			d, err := strconv.ParseInt(string(matches[4]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			e, err := strconv.ParseInt(string(matches[5]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			f, err := strconv.ParseInt(string(matches[6]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			g, err := strconv.ParseInt(string(matches[7]), 10, 32)
-			if err != nil {
-				return nil, err
-			}
-
-			dm.Pixclock = int(a)
-			dm.Left = int(b)
-			dm.Right = int(c)
-			dm.Upper = int(d)
-			dm.Lower = int(e)
-			dm.HSync = int(f)
-			dm.VSync = int(g)
-			continue
-		}
-	}
-
-	return list, nil
+	return readFBModes(fd)
 }
 
 // Palette returns the current framebuffer color palette.

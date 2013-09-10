@@ -25,6 +25,9 @@ func main() {
 	// Ensure all resources are cleaned up properly before we exit.
 	defer canvas.Close()
 
+	mode, _ := canvas.CurrentMode()
+	fmt.Fprintf(os.Stderr, "%+v\n", mode)
+
 	// Fetch the framebuffer as a image/draw.Image implementation.
 	// We can now use Go's image libraries to draw to it.
 	fb, err := canvas.Image()
