@@ -24,6 +24,13 @@ type Timings struct {
 }
 
 // DisplayMode defines a single framebuffer display mode.
+//
+// Hardware text acceleration is a property of the framebuffer driver.
+// While this structure has a mutable field for it, this property
+// can not be defined by a client. If the driver supports acceleration,
+// this property will be set to true after a Canvas.CurrentMode() call.
+// It is included here for completeness, because the fb.modes specification
+// indicates it can be defined in the mode database.
 type DisplayMode struct {
 	Geometry    Geometry    // Dimensions and bit depths.
 	Timings     Timings     // Synchronization timings.
@@ -32,7 +39,7 @@ type DisplayMode struct {
 	Nonstandard int         // Select nonstandard video mode.
 	Sync        int         // SyncXXX bit flags defining synchronisation modes.
 	VMode       int         // VModeXXX flags.
-	Accelerated bool        // Anable or disable hardware text acceleration.
+	Accelerated bool        // Hardware text acceleration is enabled or not.
 	Grayscale   bool        // Enable or disable graylevels instead of colors.
 }
 
