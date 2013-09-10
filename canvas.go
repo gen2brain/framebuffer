@@ -486,6 +486,7 @@ func (c *Canvas) Modes() ([]*DisplayMode, error) {
 		reg_extsync  = regexp.MustCompile(`extsync true`)
 		reg_laced    = regexp.MustCompile(`laced true`)
 		reg_double   = regexp.MustCompile(`double true`)
+		reg_pf       = regexp.MustCompile(`rgba (\d+)/(\d+),(\d+)/(\d+),(\d+)/(\d+),(\d+)/(\d+)`)
 	)
 
 	fd, err := os.Open("/etc/fb.modes")
@@ -519,44 +520,94 @@ func (c *Canvas) Modes() ([]*DisplayMode, error) {
 		}
 
 		// Parse hsync
-		matches = reg_hsync.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_hsync.Match(line) {
 			dm.Sync |= SyncHorHighAct
 			continue
 		}
 
 		// Parse vsync
-		matches = reg_vsync.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_vsync.Match(line) {
 			dm.Sync |= SyncVertHighAct
 			continue
 		}
 
 		// Parse csync
-		matches = reg_csync.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_csync.Match(line) {
 			dm.Sync |= SyncCompHighAct
 			continue
 		}
 
 		// Parse extsync
-		matches = reg_extsync.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_extsync.Match(line) {
 			dm.Sync |= SyncExt
 			continue
 		}
 
 		// Parse laced
-		matches = reg_laced.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_laced.Match(line) {
 			dm.VMode |= VModeInterlaced
 			continue
 		}
 
 		// Parse double
-		matches = reg_double.FindSubmatch(line)
-		if len(matches) == 2 {
+		if reg_double.Match(line) {
 			dm.VMode |= VModeDouble
+			continue
+		}
+
+		// Parse pixel format.
+		matches = reg_pf.FindSubmatch(line)
+		if len(matches) == 9 {
+			rb, err := strconv.ParseInt(string(matches[1]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			rs, err := strconv.ParseInt(string(matches[2]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			gb, err := strconv.ParseInt(string(matches[3]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			gs, err := strconv.ParseInt(string(matches[4]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			bb, err := strconv.ParseInt(string(matches[5]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			bs, err := strconv.ParseInt(string(matches[6]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			ab, err := strconv.ParseInt(string(matches[7]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			as, err := strconv.ParseInt(string(matches[8]), 10, 8)
+			if err != nil {
+				return nil, err
+			}
+
+			var pf PixelFormat
+			pf.RedBits = uint8(rb)
+			pf.RedShift = uint8(rs)
+			pf.GreenBits = uint8(gb)
+			pf.GreenShift = uint8(gs)
+			pf.BlueBits = uint8(bb)
+			pf.BlueShift = uint8(bs)
+			pf.AlphaBits = uint8(ab)
+			pf.AlphaShift = uint8(as)
+			dm.Format = pf
 			continue
 		}
 
